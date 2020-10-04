@@ -7,8 +7,9 @@ import logging as logging
 from bs4 import BeautifulSoup
 from argparse import ArgumentParser
 
+SNEGOPAT_FORUM_URL = 'https://snegopat.ru/forum'
+SNEGOBUGS_FORUM_PATH = "/viewforum.php?f=8"
 
-SNEGOBUGS_FORUM_URL = "https://snegopat.ru/forum/viewforum.php?f=8&sid=fe7bc0d24702e056da7ac4dc6a7d36fa"
 DB = None
 
 
@@ -115,6 +116,51 @@ def init_database():
     logging.info("Initializing database - Done")
 
 
+def load_topics_message(topics):
+    for topic in topics:
+        logging.info(f'Loading topic {topic["href"]}')
+        url = SNEGOPAT_FORUM_URL + topic["href"][1:]
+        topic['text'] = load_topic_message(url)
+    return topics
+
+
+def load_topic_message(url):
+    message = ''
+    page = requests.get(url)
+    soup = BeautifulSoup(page.content, "html.parser")
+    rows = [author.parent.parent.parent for author in soup.select('.postauthor')]
+    messages = []
+    for row in rows:
+        msg = parse_topic_message(row, url)
+
+        messages.append(format_message(msg))
+
+    return "\n<hr/>\n".join(messages)
+
+
+def parse_topic_message(msg_row, url):
+    a_title = msg_row.select('.gensmall')[0].select_one('a')
+    return {
+        'url': url + a_title['href'],
+        'title': a_title.getText(),
+        'author': msg_row.select_one('.postauthor').getText().strip(),
+        'post': html_to_markdown(msg_row.select_one('.postbody'))
+    }
+
+
+def html_to_markdown(html):
+    # Оставим пока для простоты в html, github нормально переваривает
+    html = ''.join([str(tag) for tag in html.children])
+    return html
+
+
+def format_message(msg):
+    parts = [];
+    parts.append(f'<b>{msg["author"]}</b> <a href="{msg["url"]}">{msg["title"]}</a>')
+    parts.append(msg["post"])
+    return '\n'.join(parts);
+
+
 def save_topics_to_db(topics):
     for topic in topics:
         DB.insert('topics', topic)
@@ -133,8 +179,12 @@ if __name__ == '__main__':
 
     if args.command == 'export-from-forum':
         logging.info("Loading forum topics")
-        topics = load_forum_topics(SNEGOBUGS_FORUM_URL)
-        save_topics_to_db(topics)
+        for page in [0, 25]:
+            url = SNEGOPAT_FORUM_URL + SNEGOBUGS_FORUM_PATH + f'&start={page}'
+            topics = load_forum_topics(url)
+            topics = load_topics_message(topics)
+            save_topics_to_db(topics)
+            break
 
     if args.command == 'import-to-github':
         logging.info("Uploading topics as issues")
