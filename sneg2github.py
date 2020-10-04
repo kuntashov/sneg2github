@@ -1,14 +1,20 @@
+import os
 import sys
-import requests
-import sqlite3
+import time
+import logging
 import os.path
-import logging as logging
+import sqlite3
+import requests
+
 
 from bs4 import BeautifulSoup
 from argparse import ArgumentParser
 
+
 SNEGOPAT_FORUM_URL = 'https://snegopat.ru/forum'
 SNEGOBUGS_FORUM_PATH = "/viewforum.php?f=8"
+
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 
 DB = None
 
@@ -167,6 +173,21 @@ def save_topics_to_db(topics):
         logging.info('Loaded topic "{t}"'.format(t=topic['title']))
 
 
+def import_to_github(owner, repo):
+    create_issue(owner, repo, issue)
+
+
+def create_issue(owner, repo, issue):
+    endpoint = f'https://api.github.com/repos/{owner}/{repo}/issues'
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': f'token {GITHUB_TOKEN}'
+    }
+    r = requests.post(endpoint, headers=headers, json=issue)
+    logging.info(r.json)
+
+
 if __name__ == '__main__':
 
     argparser = parse_arguments()
@@ -187,5 +208,5 @@ if __name__ == '__main__':
             break
 
     if args.command == 'import-to-github':
-        logging.info("Uploading topics as issues")
+        import_to_github('kuntashov', 'snegopat-test-issues')
         pass
