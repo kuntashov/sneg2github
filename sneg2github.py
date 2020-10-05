@@ -174,7 +174,14 @@ def save_topics_to_db(topics):
 
 
 def import_to_github(owner, repo):
-    create_issue(owner, repo, issue)
+    sql = 'select title, text from topics where title != ?'
+    for row in DB.execute(sql, ('Как писать об ошибках',)):
+        create_issue(owner, repo, {
+            'title': row['title'],
+            'body': row['text'],
+            'labels': ['bug', 'forum']
+        })
+        time.sleep(1.5)
 
 
 def create_issue(owner, repo, issue):
@@ -185,7 +192,7 @@ def create_issue(owner, repo, issue):
         'Authorization': f'token {GITHUB_TOKEN}'
     }
     r = requests.post(endpoint, headers=headers, json=issue)
-    logging.info(r.json)
+    logging.info(r.json())
 
 
 if __name__ == '__main__':
