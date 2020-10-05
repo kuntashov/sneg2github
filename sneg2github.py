@@ -77,7 +77,8 @@ def get_db_schema():
             "  title text not null,"
             "  href text not null unique,"
             "  author text DEFAULT '',"
-            "  text text default ''"
+            "  text text default '',"
+            "  github text default ''"
             " )"
         )
     }
@@ -150,8 +151,29 @@ def parse_topic_message(msg_row, url):
         'url': url + a_title['href'],
         'title': a_title.getText(),
         'author': msg_row.select_one('.postauthor').getText().strip(),
-        'post': html_to_markdown(msg_row.select_one('.postbody'))
+        'post': parse_postbody(msg_row)
     }
+
+
+def parse_postbody(msg_row):
+    postbody = msg_row.select_one('.postbody')
+    attach = postbody.parent.select_one('.tablebg')
+    images = ''
+    if not attach is None:
+        images = parse_images(attach.select('img'))
+    return ''.join([
+        ''.join([str(tag) for tag in postbody.children]),
+        '<br/>\n<br/>\n<b>Вложения:</b>',
+        images
+    ])
+
+
+def parse_images(images):
+    if images is None:
+        return ''
+    url = SNEGOPAT_FORUM_URL + '/download';
+    images = filter(lambda x: str(x).find('download') > -1,  images)
+    return '\n\n'.join([str(i).replace('./download', url) for i in images])
 
 
 def html_to_markdown(html):
@@ -174,13 +196,14 @@ def save_topics_to_db(topics):
 
 
 def import_to_github(owner, repo):
-    sql = 'select title, text from topics where title != ?'
+    sql = 'select id, title, text from topics where title != ?'
     for row in DB.execute(sql, ('Как писать об ошибках',)):
-        create_issue(owner, repo, {
+        github_url = create_issue(owner, repo, {
             'title': row['title'],
             'body': row['text'],
             'labels': ['bug', 'forum']
         })
+        DB.execute('UPDATE topics SET github = ? WHERE id = ?', (github_url, row['id']))
         time.sleep(1.5)
 
 
@@ -191,8 +214,11 @@ def create_issue(owner, repo, issue):
         'Accept': 'application/vnd.github.v3+json',
         'Authorization': f'token {GITHUB_TOKEN}'
     }
-    r = requests.post(endpoint, headers=headers, json=issue)
-    logging.info(r.json())
+    resp = requests.post(endpoint, headers=headers, json=issue)
+    data = resp.json()
+    url = data["url"].replace('api.', '')
+    logging.info(url)
+    return url
 
 
 if __name__ == '__main__':
